@@ -39,7 +39,7 @@ fun UriImage(
 ) {
     AsyncImage(
         modifier = modifier
-            .width(200.dp)
+            .width(150.dp)
             .clickable { },
         model = item.contentUri,
         placeholder = painterResource(id = R.drawable.ic_image),

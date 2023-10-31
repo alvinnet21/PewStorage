@@ -32,7 +32,7 @@ fun BitmapImage(
 ) {
     Image(
         modifier = modifier
-            .width(200.dp)
+            .width(150.dp)
             .clickable { deleteInternalStoragePhoto(item) },
         bitmap = item.bmp.asImageBitmap(),
         contentDescription = "Internal Storage Photo",

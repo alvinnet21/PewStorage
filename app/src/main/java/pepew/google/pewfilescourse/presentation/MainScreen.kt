@@ -1,8 +1,8 @@
 package pepew.google.pewfilescourse.presentation
 
+import android.Manifest
 import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -38,13 +38,14 @@ import pepew.google.pewfilescourse.R
 import pepew.google.pewfilescourse.domain.model.InternalStoragePhoto
 import pepew.google.pewfilescourse.presentation.component.ItemPhotoInternal
 import pepew.google.pewfilescourse.presentation.component.ItemPhotoShared
-import java.util.UUID
 
 @Composable
 fun MainScreen(
     modifier: Modifier = Modifier,
     viewModel: MainViewModel = hiltViewModel()
 ) {
+    var readGranted = false
+    var writeGranted = false
     val context = LocalContext.current
     val state = viewModel.state.value
     val switch = remember {
@@ -55,13 +56,27 @@ fun MainScreen(
             )
         )
     }
+
+    rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permission ->
+        readGranted =
+            permission[Manifest.permission.READ_EXTERNAL_STORAGE] ?: readGranted
+        writeGranted =
+            permission[Manifest.permission.WRITE_EXTERNAL_STORAGE] ?: writeGranted
+    }
+    viewModel.updateOrRequestPermissions(context, readGranted, writeGranted)
+
     val takePhoto = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicturePreview()
-    ) {
-        Log.e("ALVIN", "MainScreen: haha ${switch.value.isChecked}")
-        if (switch.value.isChecked) {
-            Log.e("ALVIN", "MainScreen: haha")
-            savePhoto(context, viewModel, it)
+    ) { bitmap ->
+        bitmap?.let {
+            savePhoto(
+                context,
+                viewModel,
+                switch.value.isChecked,
+                it
+            )
         }
     }
 
@@ -121,9 +136,13 @@ fun MainScreen(
     }
 }
 
-fun savePhoto(context: Context, viewModel: MainViewModel, it: Bitmap?) {
-    val isSavedSuccessfully =
-        viewModel.savePhotoToInternalStorage(UUID.randomUUID().toString(), it)
+fun savePhoto(
+    context: Context,
+    viewModel: MainViewModel,
+    isPrivate: Boolean,
+    it: Bitmap
+) {
+    val isSavedSuccessfully = viewModel.savePhotoAndCheckPermission(isPrivate, it)
     if (isSavedSuccessfully) {
         viewModel.getInternalStorage()
         Toast.makeText(context, "Photo saved successfully", Toast.LENGTH_SHORT)
@@ -133,6 +152,7 @@ fun savePhoto(context: Context, viewModel: MainViewModel, it: Bitmap?) {
             .show()
     }
 }
+
 
 fun deleteInternalPhoto(
     viewModel: MainViewModel,
