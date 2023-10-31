@@ -1,5 +1,12 @@
 package pepew.google.pewfilescourse.presentation
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.util.Log
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,30 +16,54 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import pepew.google.pewfilescourse.R
-import pepew.google.pewfilescourse.domain.model.StorageType
-import pepew.google.pewfilescourse.presentation.component.ItemPhoto
+import pepew.google.pewfilescourse.domain.model.InternalStoragePhoto
+import pepew.google.pewfilescourse.presentation.component.ItemPhotoInternal
+import pepew.google.pewfilescourse.presentation.component.ItemPhotoShared
+import java.util.UUID
 
 @Composable
 fun MainScreen(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    viewModel: MainViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
+    val state = viewModel.state.value
+    val switch = remember {
+        mutableStateOf(
+            ToggleableInfo(
+                isChecked = false,
+                text = "Private"
+            )
+        )
+    }
+    val takePhoto = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) {
+        Log.e("ALVIN", "MainScreen: haha ${switch.value.isChecked}")
+        if (switch.value.isChecked) {
+            Log.e("ALVIN", "MainScreen: haha")
+            savePhoto(context, viewModel, it)
+        }
+    }
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -40,12 +71,17 @@ fun MainScreen(
     ) {
         Column {
             TitleText(text = "Your Private Photos")
+            Spacer(modifier = Modifier.height(10.dp))
             LazyRow(
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
             ) {
-                items(10) { item ->
-                    ItemPhoto(
-                        storageType = StorageType.Internal
+                items(state.files) { item ->
+                    ItemPhotoInternal(
+                        internalStoragePhoto = item,
+                        deleteInternalStoragePhoto = {
+                            deleteInternalPhoto(viewModel, context, it)
+                        }
                     )
                 }
             }
@@ -53,13 +89,13 @@ fun MainScreen(
             Spacer(modifier = Modifier.height(10.dp))
 
             TitleText(text = "Shared Photos")
+            Spacer(modifier = Modifier.height(10.dp))
             LazyRow(
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
             ) {
                 items(10) { item ->
-                    ItemPhoto(
-                        storageType = StorageType.Internal
-                    )
+                    ItemPhotoShared()
                 }
             }
         }
@@ -68,46 +104,64 @@ fun MainScreen(
 
         Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f, false),
+                .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
             IconButton(
                 modifier = modifier.weight(1f),
-                onClick = {
-                }) {
+                onClick = { takePhoto.launch() }) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_camera),
                     contentDescription = "Camera"
                 )
             }
-            MySwitch(modifier = Modifier.weight(1f))
+            MySwitch(modifier = Modifier.weight(1f), switch)
         }
     }
 }
 
-@Composable
-fun MySwitch(modifier: Modifier) {
-    var switch by remember {
-        mutableStateOf(
-            ToggleableInfo(
-                isChecked = false,
-                text = "Private"
-            )
-        )
+fun savePhoto(context: Context, viewModel: MainViewModel, it: Bitmap?) {
+    val isSavedSuccessfully =
+        viewModel.savePhotoToInternalStorage(UUID.randomUUID().toString(), it)
+    if (isSavedSuccessfully) {
+        viewModel.getInternalStorage()
+        Toast.makeText(context, "Photo saved successfully", Toast.LENGTH_SHORT)
+            .show()
+    } else {
+        Toast.makeText(context, "Failed to save Photo", Toast.LENGTH_SHORT)
+            .show()
     }
+}
+
+fun deleteInternalPhoto(
+    viewModel: MainViewModel,
+    context: Context,
+    internalStoragePhoto: InternalStoragePhoto
+) {
+    val isDeleteSuccessfull =
+        viewModel.deletePhotoFromInternalStorage(internalStoragePhoto.name)
+    if (isDeleteSuccessfull) {
+        viewModel.getInternalStorage()
+        Toast.makeText(context, "Photo successfully deleted", Toast.LENGTH_SHORT).show()
+    } else {
+        Toast.makeText(context, "Failed to delete Photo", Toast.LENGTH_SHORT).show()
+    }
+}
+
+@Composable
+fun MySwitch(modifier: Modifier, switch: MutableState<ToggleableInfo>) {
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
-        Text(text = switch.text)
+        Text(text = switch.value.text)
         Spacer(modifier = Modifier.width(10.dp))
         Switch(
-            checked = switch.isChecked,
+            checked = switch.value.isChecked,
             onCheckedChange = { isChecked ->
-                switch = switch.copy(isChecked = isChecked)
+                switch.value = switch.value.copy(isChecked = isChecked)
             })
     }
 }
