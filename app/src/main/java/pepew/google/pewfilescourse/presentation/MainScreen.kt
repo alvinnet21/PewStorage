@@ -3,6 +3,7 @@ package pepew.google.pewfilescourse.presentation
 import android.Manifest
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -14,40 +15,66 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.launch
+import pepew.google.pewfilescourse.MainActivity
 import pepew.google.pewfilescourse.R
 import pepew.google.pewfilescourse.domain.model.InternalStoragePhoto
+import pepew.google.pewfilescourse.domain.model.ToggleableInfo
 import pepew.google.pewfilescourse.presentation.component.ItemPhotoInternal
 import pepew.google.pewfilescourse.presentation.component.ItemPhotoShared
+import pepew.google.pewfilescourse.presentation.component.MySwitch
+import pepew.google.pewfilescourse.presentation.component.TitleText
+
 
 @Composable
 fun MainScreen(
     modifier: Modifier = Modifier,
     viewModel: MainViewModel = hiltViewModel()
 ) {
-    var readGranted = false
-    var writeGranted = false
+
     val context = LocalContext.current
-    val state = viewModel.state.value
+    val activity = LocalContext.current as MainActivity
+
+    val permissionLaunch = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permission ->
+        if(permission.isEmpty()) return@rememberLauncherForActivityResult
+        val next = permission.entries.iterator().next()
+        if (next.key == Manifest.permission.WRITE_EXTERNAL_STORAGE) {
+            if (!next.value) {
+                Toast.makeText(context, "Can't save shared photos", Toast.LENGTH_LONG)
+                    .show()
+            }
+        }
+
+        val read = permission[Manifest.permission.READ_EXTERNAL_STORAGE] ?: false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val readImages = permission[Manifest.permission.READ_MEDIA_IMAGES] ?: false
+            if (readImages && read) viewModel.getExternalStorage()
+            else Toast.makeText(context, "Can't load shared photos", Toast.LENGTH_LONG).show()
+        } else {
+            if (!read) Toast.makeText(context, "Can't load shared photos", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    val scope = rememberCoroutineScope()
+    val internalStorageState = viewModel.internalStorageState.value
+    val sharedStorageState = viewModel.sharedStorageState.value
     val switch = remember {
         mutableStateOf(
             ToggleableInfo(
@@ -57,26 +84,28 @@ fun MainScreen(
         )
     }
 
-    rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permission ->
-        readGranted =
-            permission[Manifest.permission.READ_EXTERNAL_STORAGE] ?: readGranted
-        writeGranted =
-            permission[Manifest.permission.WRITE_EXTERNAL_STORAGE] ?: writeGranted
+    val isGrantedReadExternal = activity.checkPermissions(Manifest.permission.READ_EXTERNAL_STORAGE)
+    val listPermission = mutableListOf<String>()
+    if (!isGrantedReadExternal) listPermission.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        val isGrantedReadImages = activity.checkPermissions(Manifest.permission.READ_MEDIA_IMAGES)
+        if (!isGrantedReadImages) listPermission.add(Manifest.permission.READ_MEDIA_IMAGES)
     }
-    viewModel.updateOrRequestPermissions(context, readGranted, writeGranted)
+    SideEffect { permissionLaunch.launch(listPermission.toTypedArray()) }
+
 
     val takePhoto = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicturePreview()
     ) { bitmap ->
         bitmap?.let {
-            savePhoto(
-                context,
-                viewModel,
-                switch.value.isChecked,
-                it
-            )
+            scope.launch {
+                savePhoto(
+                    context,
+                    viewModel,
+                    switch.value.isChecked,
+                    it
+                )
+            }
         }
     }
 
@@ -91,11 +120,13 @@ fun MainScreen(
                 modifier = Modifier
                     .fillMaxWidth()
             ) {
-                items(state.files) { item ->
+                items(internalStorageState.files) { item ->
                     ItemPhotoInternal(
                         internalStoragePhoto = item,
                         deleteInternalStoragePhoto = {
-                            deleteInternalPhoto(viewModel, context, it)
+                            scope.launch {
+                                deleteInternalPhoto(viewModel, context, it)
+                            }
                         }
                     )
                 }
@@ -109,8 +140,8 @@ fun MainScreen(
                 modifier = Modifier
                     .fillMaxWidth()
             ) {
-                items(10) { item ->
-                    ItemPhotoShared()
+                items(sharedStorageState.files) { item ->
+                    ItemPhotoShared(sharedStoragePhoto = item)
                 }
             }
         }
@@ -125,7 +156,17 @@ fun MainScreen(
         ) {
             IconButton(
                 modifier = modifier.weight(1f),
-                onClick = { takePhoto.launch() }) {
+                onClick = {
+                    if (!switch.value.isChecked) {
+                        val isGranted =
+                            activity.checkPermissions(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        if (!isGranted) {
+                            val listPermission = listOf(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                            permissionLaunch.launch(listPermission.toTypedArray())
+                        }
+                    }
+                    takePhoto.launch()
+                }) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_camera),
                     contentDescription = "Camera"
@@ -136,15 +177,14 @@ fun MainScreen(
     }
 }
 
-fun savePhoto(
+suspend fun savePhoto(
     context: Context,
     viewModel: MainViewModel,
     isPrivate: Boolean,
     it: Bitmap
 ) {
-    val isSavedSuccessfully = viewModel.savePhotoAndCheckPermission(isPrivate, it)
+    val isSavedSuccessfully = viewModel.savePhotoFiles(isPrivate, it)
     if (isSavedSuccessfully) {
-        viewModel.getInternalStorage()
         Toast.makeText(context, "Photo saved successfully", Toast.LENGTH_SHORT)
             .show()
     } else {
@@ -153,8 +193,7 @@ fun savePhoto(
     }
 }
 
-
-fun deleteInternalPhoto(
+suspend fun deleteInternalPhoto(
     viewModel: MainViewModel,
     context: Context,
     internalStoragePhoto: InternalStoragePhoto
@@ -167,39 +206,4 @@ fun deleteInternalPhoto(
     } else {
         Toast.makeText(context, "Failed to delete Photo", Toast.LENGTH_SHORT).show()
     }
-}
-
-@Composable
-fun MySwitch(modifier: Modifier, switch: MutableState<ToggleableInfo>) {
-    Row(
-        modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
-    ) {
-        Text(text = switch.value.text)
-        Spacer(modifier = Modifier.width(10.dp))
-        Switch(
-            checked = switch.value.isChecked,
-            onCheckedChange = { isChecked ->
-                switch.value = switch.value.copy(isChecked = isChecked)
-            })
-    }
-}
-
-data class ToggleableInfo(
-    val isChecked: Boolean,
-    val text: String
-)
-
-@Composable
-fun TitleText(
-    text: String
-) {
-    Text(
-        modifier = Modifier.fillMaxWidth(),
-        text = text,
-        textAlign = TextAlign.Start,
-        fontWeight = FontWeight.Bold,
-        fontSize = 20.sp
-    )
 }

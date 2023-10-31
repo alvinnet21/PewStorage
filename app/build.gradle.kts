@@ -94,4 +94,6 @@ dependencies {
     ksp("androidx.hilt:hilt-compiler:1.0.0")
     implementation("androidx.hilt:hilt-navigation-compose:1.0.0")
 
+    implementation("com.google.accompanist:accompanist-permissions:0.32.0")
+
 }

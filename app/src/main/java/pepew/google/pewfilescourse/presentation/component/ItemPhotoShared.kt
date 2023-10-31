@@ -14,18 +14,9 @@ import pepew.google.pewfilescourse.domain.model.SharedStoragePhoto
 
 @Composable
 fun ItemPhotoShared(
-    sharedStoragePhoto: SharedStoragePhoto? = null,
+    sharedStoragePhoto: SharedStoragePhoto,
     modifier: Modifier = Modifier,
 ) {
-    if (sharedStoragePhoto == null) {
-        val painterResource = painterResource(id = R.drawable.ic_launcher_foreground)
-        Image(
-            painter = painterResource,
-            contentDescription = "Shared Photo",
-            contentScale = ContentScale.Crop
-        )
-        return
-    }
     UriImage(
         item = sharedStoragePhoto,
         modifier = modifier
