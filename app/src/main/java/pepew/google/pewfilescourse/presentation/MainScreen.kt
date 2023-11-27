@@ -1,11 +1,14 @@
 package pepew.google.pewfilescourse.presentation
 
 import android.Manifest
+import android.app.Activity.RESULT_OK
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.launch
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +37,7 @@ import kotlinx.coroutines.launch
 import pepew.google.pewfilescourse.MainActivity
 import pepew.google.pewfilescourse.R
 import pepew.google.pewfilescourse.domain.model.InternalStoragePhoto
+import pepew.google.pewfilescourse.domain.model.SharedStoragePhoto
 import pepew.google.pewfilescourse.domain.model.ToggleableInfo
 import pepew.google.pewfilescourse.presentation.component.ItemPhotoInternal
 import pepew.google.pewfilescourse.presentation.component.ItemPhotoShared
@@ -46,14 +50,13 @@ fun MainScreen(
     modifier: Modifier = Modifier,
     viewModel: MainViewModel = hiltViewModel()
 ) {
-
     val context = LocalContext.current
     val activity = LocalContext.current as MainActivity
 
     val permissionLaunch = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permission ->
-        if(permission.isEmpty()) return@rememberLauncherForActivityResult
+        if (permission.isEmpty()) return@rememberLauncherForActivityResult
         val next = permission.entries.iterator().next()
         if (next.key == Manifest.permission.WRITE_EXTERNAL_STORAGE) {
             if (!next.value) {
@@ -71,6 +74,27 @@ fun MainScreen(
             if (!read) Toast.makeText(context, "Can't load shared photos", Toast.LENGTH_LONG).show()
         }
     }
+
+    val intentSenderLauncher: ActivityResultLauncher<IntentSenderRequest> =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.StartIntentSenderForResult(),
+        ) {
+            if (it.resultCode == RESULT_OK) {
+                viewModel.getExternalStorage()
+                Toast.makeText(
+                    context,
+                    "Photo successfully deleted",
+                    Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                viewModel.getExternalStorage()
+                Toast.makeText(
+                    context,
+                    "Photo couldn't be deleted",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
 
     val scope = rememberCoroutineScope()
     val internalStorageState = viewModel.internalStorageState.value
@@ -141,7 +165,12 @@ fun MainScreen(
                     .fillMaxWidth()
             ) {
                 items(sharedStorageState.files) { item ->
-                    ItemPhotoShared(sharedStoragePhoto = item)
+                    ItemPhotoShared(sharedStoragePhoto = item,
+                        deleteSharedStoragePhoto = {
+                            scope.launch {
+                                deleteExternalPhoto(viewModel, context, intentSenderLauncher, it)
+                            }
+                        })
                 }
             }
         }
@@ -205,5 +234,22 @@ suspend fun deleteInternalPhoto(
         Toast.makeText(context, "Photo successfully deleted", Toast.LENGTH_SHORT).show()
     } else {
         Toast.makeText(context, "Failed to delete Photo", Toast.LENGTH_SHORT).show()
+    }
+}
+
+suspend fun deleteExternalPhoto(
+    viewModel: MainViewModel,
+    context: Context,
+    intentSenderLauncher: ActivityResultLauncher<IntentSenderRequest>,
+    sharedStoragePhoto: SharedStoragePhoto
+) {
+    val intentSender = viewModel.deletePhotoFromExternalStorage(sharedStoragePhoto.contentUri)
+    if (intentSender != null) {
+        intentSender.let { sender ->
+            intentSenderLauncher.launch(IntentSenderRequest.Builder(sender).build())
+        }
+    } else {
+        viewModel.getInternalStorage()
+        Toast.makeText(context, "Photo successfully deleted", Toast.LENGTH_SHORT).show()
     }
 }

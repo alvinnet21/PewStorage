@@ -47,7 +47,7 @@ class FilesRepositoryImpl @Inject constructor(
                 projection,
                 null,
                 null,
-                "${MediaStore.Images.Media.DISPLAY_NAME} ASC"
+                "${MediaStore.Images.Media.DATE_ADDED} DESC"
             )?.use { cursor ->
                 val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
                 val displayNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)

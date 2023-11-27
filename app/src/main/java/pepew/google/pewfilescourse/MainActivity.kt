@@ -1,16 +1,23 @@
 package pepew.google.pewfilescourse
 
 import android.Manifest
+import android.app.RecoverableSecurityException
+import android.content.IntentSender
 import android.content.pm.PackageManager
 import android.database.ContentObserver
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import pepew.google.pewfilescourse.presentation.MainScreen
 import pepew.google.pewfilescourse.ui.theme.PewFilesCourseTheme
 
@@ -62,6 +69,30 @@ class MainActivity : ComponentActivity() {
         }
 
         return granted
+    }
+
+    suspend fun deletePhotoFromExternalStorage(photoUri: Uri): IntentSender? {
+        return withContext(Dispatchers.IO) {
+            try {
+                application.contentResolver.delete(photoUri, null, null)
+                null
+            } catch (e: SecurityException) {
+                when {
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+                        MediaStore.createDeleteRequest(
+                            application.contentResolver,
+                            listOf(photoUri)
+                        ).intentSender
+                    }
+
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                        val recoverableSecurityException = e as? RecoverableSecurityException
+                        recoverableSecurityException?.userAction?.actionIntent?.intentSender
+                    }
+                    else -> null
+                }
+            }
+        }
     }
 
     override fun onDestroy() {

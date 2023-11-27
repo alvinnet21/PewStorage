@@ -1,8 +1,12 @@
 package pepew.google.pewfilescourse.presentation
 
 import android.app.Application
+import android.app.RecoverableSecurityException
 import android.content.ContentValues
+import android.content.IntentSender
 import android.graphics.Bitmap
+import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.State
@@ -41,7 +45,6 @@ class MainViewModel @Inject constructor(
     }
 
     fun getExternalStorage() {
-        println("ALVIN ADA BERAPA GET EXTERNAL")
         getSharedFilesStorageUseCase().onEach { result ->
             when (result) {
                 is Resource.Success -> {
@@ -89,7 +92,7 @@ class MainViewModel @Inject constructor(
     ): Boolean {
         val isSavedSuccessfully = when {
             isPrivate -> savePhotoToInternalStorage(UUID.randomUUID().toString(), bmp)
-            else  -> savePhotoToExternalStorage(UUID.randomUUID().toString(), bmp)
+            else -> savePhotoToExternalStorage(UUID.randomUUID().toString(), bmp)
         }
         if (isPrivate) {
             getInternalStorage()
@@ -154,6 +157,30 @@ class MainViewModel @Inject constructor(
             } catch (e: Exception) {
                 e.printStackTrace()
                 false
+            }
+        }
+    }
+
+    suspend fun deletePhotoFromExternalStorage(photoUri: Uri): IntentSender? {
+        return withContext(Dispatchers.IO) {
+            try {
+                application.contentResolver.delete(photoUri, null, null)
+                null
+            } catch (e: SecurityException) {
+                when {
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+                        MediaStore.createDeleteRequest(
+                            application.contentResolver,
+                            listOf(photoUri)
+                        ).intentSender
+                    }
+
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                        val recoverableSecurityException = e as? RecoverableSecurityException
+                        recoverableSecurityException?.userAction?.actionIntent?.intentSender
+                    }
+                    else -> null
+                }
             }
         }
     }
